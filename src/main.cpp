@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "fifo.hpp"
+#include "opt.hpp"
 #include "trace.hpp"
 
 namespace {
@@ -54,7 +55,7 @@ int main(int argc, char* argv[]) {
     }
     const std::string trace_path = argv[1];
     const std::string policy = argv[2];
-    if (policy != "fifo") {
+    if (policy != "fifo" && policy != "opt") {
         std::cerr << "unknown policy: " << policy << '\n' << kUsage;
         return 2;
     }
@@ -80,7 +81,8 @@ int main(int argc, char* argv[]) {
     const std::string name = trace_name(trace_path);
     std::cout << "trace,policy,frames,history_bits,aging_interval,accesses,page_faults\n";
     for (std::size_t frame_count : frame_counts) {
-        const uint64_t page_faults = simulate_fifo(pages, frame_count);
+        const uint64_t page_faults = policy == "opt" ? simulate_opt(pages, frame_count)
+                                                     : simulate_fifo(pages, frame_count);
         std::cout << name << ',' << policy << ',' << frame_count << ",,," << pages.size()
                   << ',' << page_faults << '\n';
     }
