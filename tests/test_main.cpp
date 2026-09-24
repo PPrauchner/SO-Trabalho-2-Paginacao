@@ -183,6 +183,32 @@ void test_cli_rejects_unreadable_trace() {
     expect_input_error(kScratchDir + " fifo 1", "cannot read trace");
 }
 
+void test_cli_rejects_unknown_policy() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    expect_input_error(trace + " lifo 3", "usage:");
+}
+
+void test_cli_rejects_non_positive_frame_count() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    expect_input_error(trace + " fifo 0", "usage:");
+    expect_input_error(trace + " fifo -3", "usage:");
+    expect_input_error(trace + " fifo 3 abc", "usage:");
+    expect_input_error(trace + " fifo 3x", "usage:");
+}
+
+void test_cli_rejects_missing_arguments() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    expect_input_error(trace + " fifo", "usage:");
+    expect_input_error(trace, "usage:");
+    expect_input_error("", "usage:");
+}
+
 void test_policy_enough_frames_faults_equal_distinct_pages() {
     // Páginas distintas: {7, 0, 1, 2, 3, 4} → 6.
     const std::size_t distinct_pages = 6;
@@ -206,6 +232,9 @@ int main() {
     test_cli_rejects_line_with_extra_fields();
     test_cli_rejects_missing_trace();
     test_cli_rejects_unreadable_trace();
+    test_cli_rejects_unknown_policy();
+    test_cli_rejects_non_positive_frame_count();
+    test_cli_rejects_missing_arguments();
     std::cout << "all tests passed\n";
     return 0;
 }
