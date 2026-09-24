@@ -55,21 +55,45 @@ std::vector<std::string> trace_lines_for_pages(const std::vector<uint32_t>& page
 struct RunResult {
     int exit_code;
     std::vector<std::string> stdout_lines;
+    std::string stderr_text;
 };
 
-/// Executa o simulador com os argumentos dados e captura a saída padrão.
+/// Executa o simulador com os argumentos dados e captura a saída padrão e a de erro.
 RunResult run_sim(const std::string& args) {
     const std::string out_path = kScratchDir + "/sim_stdout.txt";
-    const std::string command = kSimBinary + " " + args + " > " + out_path;
+    const std::string err_path = kScratchDir + "/sim_stderr.txt";
+    const std::string command =
+        kSimBinary + " " + args + " > " + out_path + " 2> " + err_path;
     const int status = std::system(command.c_str());
 
-    RunResult result{status, {}};
-    std::ifstream in(out_path);
+    RunResult result{status, {}, {}};
+    std::ifstream out(out_path);
     std::string line;
-    while (std::getline(in, line)) {
+    while (std::getline(out, line)) {
         result.stdout_lines.push_back(line);
     }
+    std::ifstream err(err_path);
+    std::ostringstream err_text;
+    err_text << err.rdbuf();
+    result.stderr_text = err_text.str();
     return result;
+}
+
+/// Confere que a execução falhou por erro de entrada: código ≠ 0, nada em stdout
+/// e uma mensagem em stderr contendo o trecho esperado.
+/// @param args             Argumentos passados ao simulador.
+/// @param expected_message Trecho que a mensagem de erro deve conter.
+void expect_input_error(const std::string& args, const std::string& expected_message) {
+    const RunResult result = run_sim(args);
+    if (result.exit_code == 0 || !result.stdout_lines.empty() ||
+        result.stderr_text.find(expected_message) == std::string::npos) {
+        std::cerr << "args: " << args << "\nexit: " << result.exit_code
+                  << "\nstdout lines: " << result.stdout_lines.size()
+                  << "\nstderr: " << result.stderr_text << '\n';
+    }
+    assert(result.exit_code != 0);
+    assert(result.stdout_lines.empty());
+    assert(result.stderr_text.find(expected_message) != std::string::npos);
 }
 
 const std::vector<uint32_t> kSilberschatzPages = {7, 0, 1, 2, 0, 3, 0, 4, 2, 3,
@@ -116,6 +140,49 @@ void test_cli_addresses_in_same_page_are_same_page() {
     assert(result.stdout_lines[1] == "same_page,fifo,1,,,4,2");
 }
 
+void test_cli_rejects_access_type_other_than_read_or_write() {
+    const std::string trace = write_trace("bad_type.trace", {"1000 R", "2000 X"});
+
+    expect_input_error(trace + " fifo 1", "bad_type.trace:2:");
+}
+
+void test_cli_rejects_non_hex_address() {
+    const std::string trace =
+        write_trace("bad_address.trace", {"1000 R", "2000 W", "12zz W"});
+
+    expect_input_error(trace + " fifo 1", "bad_address.trace:3:");
+}
+
+void test_cli_rejects_address_wider_than_32_bits() {
+    const std::string trace = write_trace("wide_address.trace", {"123456789 R"});
+
+    expect_input_error(trace + " fifo 1", "wide_address.trace:1:");
+}
+
+void test_cli_rejects_line_with_missing_fields() {
+    const std::string trace = write_trace("missing_type.trace", {"1000 R", "2000"});
+    expect_input_error(trace + " fifo 1", "missing_type.trace:2:");
+
+    const std::string blank = write_trace("blank_line.trace", {"1000 R", "", "2000 W"});
+    expect_input_error(blank + " fifo 1", "blank_line.trace:2:");
+}
+
+void test_cli_rejects_line_with_extra_fields() {
+    const std::string trace = write_trace("extra_field.trace", {"1000 R 7"});
+
+    expect_input_error(trace + " fifo 1", "extra_field.trace:1:");
+}
+
+void test_cli_rejects_missing_trace() {
+    expect_input_error(kScratchDir + "/does_not_exist.trace fifo 1",
+                       "cannot open trace");
+}
+
+void test_cli_rejects_unreadable_trace() {
+    // Um diretório abre como arquivo, mas não pode ser lido.
+    expect_input_error(kScratchDir + " fifo 1", "cannot read trace");
+}
+
 void test_policy_enough_frames_faults_equal_distinct_pages() {
     // Páginas distintas: {7, 0, 1, 2, 3, 4} → 6.
     const std::size_t distinct_pages = 6;
@@ -132,6 +199,13 @@ int main() {
     test_cli_fifo_silberschatz_three_frames();
     test_cli_emits_one_line_per_frame_count();
     test_cli_addresses_in_same_page_are_same_page();
+    test_cli_rejects_access_type_other_than_read_or_write();
+    test_cli_rejects_non_hex_address();
+    test_cli_rejects_address_wider_than_32_bits();
+    test_cli_rejects_line_with_missing_fields();
+    test_cli_rejects_line_with_extra_fields();
+    test_cli_rejects_missing_trace();
+    test_cli_rejects_unreadable_trace();
     std::cout << "all tests passed\n";
     return 0;
 }

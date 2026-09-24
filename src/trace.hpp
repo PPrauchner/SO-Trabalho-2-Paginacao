@@ -18,5 +18,6 @@ constexpr uint32_t kPageOffsetBits = 12;
 /// Lê o trace inteiro e devolve a página de cada acesso, em ordem.
 /// @param path Caminho do arquivo de trace.
 /// @return Páginas acessadas, uma por acesso.
-/// @throws std::runtime_error se o arquivo não abrir ou uma linha for malformada.
+/// @throws std::runtime_error se o arquivo não abrir, não puder ser lido ou tiver
+///         uma linha malformada (a mensagem traz o número da linha).
 std::vector<uint32_t> read_trace(const std::string& path);
