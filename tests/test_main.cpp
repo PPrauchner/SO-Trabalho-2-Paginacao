@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "fifo.hpp"
+#include "opt.hpp"
 
 namespace {
 
@@ -111,6 +112,18 @@ void test_cli_fifo_silberschatz_three_frames() {
     assert(result.stdout_lines.size() == 2);
     assert(result.stdout_lines[0] == kCsvHeader);
     assert(result.stdout_lines[1] == "silberschatz,fifo,3,,,20,15");
+}
+
+void test_cli_opt_silberschatz_three_frames() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    const RunResult result = run_sim(trace + " opt 3");
+
+    assert(result.exit_code == 0);
+    assert(result.stdout_lines.size() == 2);
+    assert(result.stdout_lines[0] == kCsvHeader);
+    assert(result.stdout_lines[1] == "silberschatz,opt,3,,,20,9");
 }
 
 void test_cli_emits_one_line_per_frame_count() {
@@ -215,6 +228,55 @@ void test_policy_enough_frames_faults_equal_distinct_pages() {
     for (std::size_t frame_count = distinct_pages; frame_count <= distinct_pages + 4;
          ++frame_count) {
         assert(simulate_fifo(kSilberschatzPages, frame_count) == distinct_pages);
+        assert(simulate_opt(kSilberschatzPages, frame_count) == distinct_pages);
+    }
+}
+
+/// Sequência pseudoaleatória determinística de páginas (gerador congruencial linear).
+/// @param length     Número de acessos.
+/// @param page_range Páginas geradas ficam em [0, page_range).
+/// @param seed       Semente do gerador.
+std::vector<uint32_t> pseudo_random_pages(std::size_t length, uint32_t page_range,
+                                          uint32_t seed) {
+    std::vector<uint32_t> pages;
+    uint32_t state = seed;
+    for (std::size_t i = 0; i < length; ++i) {
+        state = state * 1664525u + 1013904223u;
+        pages.push_back((state >> 16) % page_range);
+    }
+    return pages;
+}
+
+void test_opt_evicts_page_never_used_again() {
+    // Com 2 frames, o acesso à página 3 exige uma vítima: a 1 nunca mais é usada e
+    // a 2 é. Escolher a 1 dá 3 falhas; escolher a 2 (o que o FIFO faz) daria 4.
+    const std::vector<uint32_t> pages = {2, 1, 3, 2, 3};
+
+    assert(simulate_opt(pages, 2) == 3);
+    assert(simulate_fifo(pages, 2) == 4);
+}
+
+void test_opt_never_worse_than_fifo() {
+    const std::vector<std::vector<uint32_t>> traces = {
+        kSilberschatzPages,
+        {1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5},  // sequência da anomalia de Belady
+        pseudo_random_pages(2000, 10, 1),
+        pseudo_random_pages(2000, 40, 7),
+    };
+    for (const std::vector<uint32_t>& pages : traces) {
+        for (std::size_t frame_count = 1; frame_count <= 12; ++frame_count) {
+            assert(simulate_opt(pages, frame_count) <= simulate_fifo(pages, frame_count));
+        }
+    }
+}
+
+void test_opt_is_deterministic() {
+    const std::vector<uint32_t> pages = pseudo_random_pages(5000, 50, 3);
+    for (std::size_t frame_count : {4, 8, 16}) {
+        const uint64_t first = simulate_opt(pages, frame_count);
+        for (int run = 0; run < 3; ++run) {
+            assert(simulate_opt(pages, frame_count) == first);
+        }
     }
 }
 
@@ -222,7 +284,11 @@ void test_policy_enough_frames_faults_equal_distinct_pages() {
 
 int main() {
     test_policy_enough_frames_faults_equal_distinct_pages();
+    test_opt_evicts_page_never_used_again();
+    test_opt_never_worse_than_fifo();
+    test_opt_is_deterministic();
     test_cli_fifo_silberschatz_three_frames();
+    test_cli_opt_silberschatz_three_frames();
     test_cli_emits_one_line_per_frame_count();
     test_cli_addresses_in_same_page_are_same_page();
     test_cli_rejects_access_type_other_than_read_or_write();
