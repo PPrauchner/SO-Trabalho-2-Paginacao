@@ -2,27 +2,32 @@
  * CLI do simulador: lê um trace uma vez e emite uma linha de CSV por simulação.
  *
  * Responsabilidades:
- * - Interpretar os argumentos (trace, política, números de frames).
+ * - Interpretar os argumentos (trace, política, N e I do LRU aproximado, números
+ *   de frames).
  * - Rodar uma simulação por número de frames sobre o mesmo trace em memória.
  * - Imprimir o cabeçalho e as linhas do CSV na saída padrão.
  *
- * Uso: sim <trace> <policy> <frame_count>...
+ * Uso: sim <trace> fifo|opt <frame_count>...
+ *      sim <trace> lru-approx <history_bits> <aging_interval> <frame_count>...
  */
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "fifo.hpp"
+#include "lru_approx.hpp"
 #include "opt.hpp"
 #include "trace.hpp"
 
 namespace {
 
 const char* const kUsage =
-    "usage: sim <trace> <policy> <frame_count>...\n"
-    "  policy: fifo\n";
+    "usage: sim <trace> fifo|opt <frame_count>...\n"
+    "       sim <trace> lru-approx <history_bits> <aging_interval> <frame_count>...\n"
+    "  history_bits: 1-32; aging_interval: accesses between agings, >= 1\n";
 
 /// Nome do trace no CSV: o nome do arquivo sem diretório e sem extensão.
 std::string trace_name(const std::string& path) {
@@ -35,15 +40,26 @@ std::string trace_name(const std::string& path) {
     return name;
 }
 
-/// Converte um argumento em número de frames (inteiro positivo).
+/// Converte um argumento em inteiro positivo.
 /// @throws std::invalid_argument se o argumento não for um inteiro positivo.
-std::size_t parse_frame_count(const std::string& arg) {
+uint64_t parse_positive(const std::string& arg) {
     std::size_t consumed = 0;
     const unsigned long long value = std::stoull(arg, &consumed);
     if (consumed != arg.size() || value == 0 || arg[0] == '-') {
-        throw std::invalid_argument("invalid frame count: " + arg);
+        throw std::invalid_argument("not a positive integer: " + arg);
     }
-    return static_cast<std::size_t>(value);
+    return static_cast<uint64_t>(value);
+}
+
+/// Converte um argumento em bits de histórico (N), entre kMinHistoryBits e
+/// kMaxHistoryBits.
+/// @throws std::invalid_argument se o argumento estiver fora da faixa.
+uint32_t parse_history_bits(const std::string& arg) {
+    const uint64_t bits = parse_positive(arg);
+    if (bits < kMinHistoryBits || bits > kMaxHistoryBits) {
+        throw std::invalid_argument("history bits out of range: " + arg);
+    }
+    return static_cast<uint32_t>(bits);
 }
 
 }  // namespace
@@ -55,15 +71,35 @@ int main(int argc, char* argv[]) {
     }
     const std::string trace_path = argv[1];
     const std::string policy = argv[2];
-    if (policy != "fifo" && policy != "opt") {
+    const bool is_lru_approx = policy == "lru-approx";
+    if (policy != "fifo" && policy != "opt" && !is_lru_approx) {
         std::cerr << "unknown policy: " << policy << '\n' << kUsage;
         return 2;
     }
 
+    // N e I só existem no LRU aproximado e vêm antes dos números de frames.
+    int first_frame_arg = 3;
+    uint32_t history_bits = 0;
+    uint64_t aging_interval = 0;
+    if (is_lru_approx) {
+        first_frame_arg = 5;
+        if (argc <= first_frame_arg) {
+            std::cerr << kUsage;
+            return 2;
+        }
+        try {
+            history_bits = parse_history_bits(argv[3]);
+            aging_interval = parse_positive(argv[4]);
+        } catch (const std::exception&) {
+            std::cerr << "invalid history bits (N) or aging interval (I)\n" << kUsage;
+            return 2;
+        }
+    }
+
     std::vector<std::size_t> frame_counts;
     try {
-        for (int i = 3; i < argc; ++i) {
-            frame_counts.push_back(parse_frame_count(argv[i]));
+        for (int i = first_frame_arg; i < argc; ++i) {
+            frame_counts.push_back(static_cast<std::size_t>(parse_positive(argv[i])));
         }
     } catch (const std::exception&) {
         std::cerr << "invalid frame count\n" << kUsage;
@@ -79,12 +115,23 @@ int main(int argc, char* argv[]) {
     }
 
     const std::string name = trace_name(trace_path);
+    // N e I ficam vazios no CSV para as políticas que não os usam.
+    const std::string lru_params =
+        is_lru_approx ? std::to_string(history_bits) + ',' + std::to_string(aging_interval)
+                      : ",";
     std::cout << "trace,policy,frames,history_bits,aging_interval,accesses,page_faults\n";
     for (std::size_t frame_count : frame_counts) {
-        const uint64_t page_faults = policy == "opt" ? simulate_opt(pages, frame_count)
-                                                     : simulate_fifo(pages, frame_count);
-        std::cout << name << ',' << policy << ',' << frame_count << ",,," << pages.size()
-                  << ',' << page_faults << '\n';
+        uint64_t page_faults = 0;
+        if (is_lru_approx) {
+            page_faults =
+                simulate_lru_approx(pages, frame_count, history_bits, aging_interval);
+        } else if (policy == "opt") {
+            page_faults = simulate_opt(pages, frame_count);
+        } else {
+            page_faults = simulate_fifo(pages, frame_count);
+        }
+        std::cout << name << ',' << policy << ',' << frame_count << ',' << lru_params
+                  << ',' << pages.size() << ',' << page_faults << '\n';
     }
     return 0;
 }
