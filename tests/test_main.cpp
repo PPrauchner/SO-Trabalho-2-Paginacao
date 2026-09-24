@@ -17,9 +17,11 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "fifo.hpp"
+#include "lru_approx.hpp"
 #include "opt.hpp"
 
 namespace {
@@ -229,6 +231,8 @@ void test_policy_enough_frames_faults_equal_distinct_pages() {
          ++frame_count) {
         assert(simulate_fifo(kSilberschatzPages, frame_count) == distinct_pages);
         assert(simulate_opt(kSilberschatzPages, frame_count) == distinct_pages);
+        assert(simulate_lru_approx(kSilberschatzPages, frame_count, 8, 4) ==
+               distinct_pages);
     }
 }
 
@@ -280,6 +284,120 @@ void test_opt_is_deterministic() {
     }
 }
 
+void test_lru_approx_spares_recently_used_page_on_history_tie() {
+    // 2 frames, N = 2, I = 2. O envelhecimento no acesso 2 deixa as páginas 1 e 2
+    // com o mesmo histórico e bit de referência desligado; o acesso 3 religa o bit
+    // da página 1. No acesso 4 a vítima é a 2 (bit desligado), não a 1 — que o
+    // FIFO expulsaria por ser a carregada há mais tempo. O acesso 5 acerta a 1.
+    const std::vector<uint32_t> pages = {1, 2, 1, 3, 1};
+
+    assert(simulate_lru_approx(pages, 2, 2, 2) == 3);
+    assert(simulate_fifo(pages, 2) == 4);
+}
+
+void test_lru_approx_full_tie_evicts_oldest_loaded_page() {
+    // 2 frames, sem envelhecimento antes da falha (I = 100): no acesso 3 as páginas
+    // 2 e 1 empatam em histórico e bit de referência. A vítima é a 2, carregada há
+    // mais tempo (não a de menor número); o acesso 4 acerta a 1.
+    const std::vector<uint32_t> pages = {2, 1, 3, 1};
+
+    assert(simulate_lru_approx(pages, 2, 8, 100) == 3);
+}
+
+void test_lru_approx_ages_exactly_on_multiple_of_interval() {
+    // 2 frames, N = 2, sequência 1 2 1 3 2.
+    // I = 2: o envelhecimento no acesso 2 desliga os bits; o acesso 3 religa o da
+    // página 1, então o acesso 4 expulsa a 2 e o acesso 5 falha → 4 falhas.
+    // I = 3: o envelhecimento só ocorre no acesso 3 e desliga os dois bits; o acesso
+    // 4 cai no empate total e expulsa a 1 (a mais antiga); o acesso 5 acerta → 3.
+    const std::vector<uint32_t> pages = {1, 2, 1, 3, 2};
+
+    assert(simulate_lru_approx(pages, 2, 2, 2) == 4);
+    assert(simulate_lru_approx(pages, 2, 2, 3) == 3);
+}
+
+void test_lru_approx_small_history_saturates_with_interval_one() {
+    // 3 frames, I = 1 (envelhece a cada acesso), sequência 1 2 1 3 3 3 4 2.
+    // N = 8 ainda lembra que a 2 foi usada antes da 1: o acesso 4 (página 4) expulsa
+    // a 2 e o último acesso falha → 5 falhas.
+    // N = 2 só guarda os dois últimos acessos, ambos à página 3: as páginas 1 e 2
+    // empatam com histórico zerado, a 1 (mais antiga) sai e o último acesso acerta → 4.
+    const std::vector<uint32_t> pages = {1, 2, 1, 3, 3, 3, 4, 2};
+
+    assert(simulate_lru_approx(pages, 3, 8, 1) == 5);
+    assert(simulate_lru_approx(pages, 3, 2, 1) == 4);
+}
+
+void test_opt_never_worse_than_lru_approx() {
+    const std::vector<std::vector<uint32_t>> traces = {
+        kSilberschatzPages,
+        {1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5},
+        pseudo_random_pages(2000, 10, 1),
+        pseudo_random_pages(2000, 40, 7),
+    };
+    const std::vector<std::pair<uint32_t, uint64_t>> history_and_interval = {
+        {1, 1}, {2, 3}, {8, 1}, {8, 16}, {32, 5}};
+    for (const std::vector<uint32_t>& pages : traces) {
+        for (std::size_t frame_count = 1; frame_count <= 12; ++frame_count) {
+            for (const auto& [history_bits, aging_interval] : history_and_interval) {
+                assert(simulate_opt(pages, frame_count) <=
+                       simulate_lru_approx(pages, frame_count, history_bits,
+                                           aging_interval));
+            }
+        }
+    }
+}
+
+void test_lru_approx_is_deterministic() {
+    const std::vector<uint32_t> pages = pseudo_random_pages(5000, 50, 3);
+    for (std::size_t frame_count : {4, 8, 16}) {
+        const uint64_t first = simulate_lru_approx(pages, frame_count, 8, 4);
+        for (int run = 0; run < 3; ++run) {
+            assert(simulate_lru_approx(pages, frame_count, 8, 4) == first);
+        }
+    }
+}
+
+void test_cli_lru_approx_fills_history_bits_and_aging_interval() {
+    // Mesma sequência do teste de fronteira do envelhecimento: I = 2 → 4 falhas.
+    const std::string trace =
+        write_trace("aging.trace", trace_lines_for_pages({1, 2, 1, 3, 2}));
+
+    const RunResult result = run_sim(trace + " lru-approx 2 2 2 5");
+
+    assert(result.exit_code == 0);
+    assert(result.stdout_lines.size() == 3);
+    assert(result.stdout_lines[0] == kCsvHeader);
+    assert(result.stdout_lines[1] == "aging,lru-approx,2,2,2,5,4");
+    assert(result.stdout_lines[2] == "aging,lru-approx,5,2,2,5,3");
+}
+
+void test_cli_rejects_invalid_lru_approx_parameters() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    expect_input_error(trace + " lru-approx 0 4 3", "usage:");
+    expect_input_error(trace + " lru-approx 33 4 3", "usage:");
+    expect_input_error(trace + " lru-approx -1 4 3", "usage:");
+    expect_input_error(trace + " lru-approx 8 0 3", "usage:");
+    expect_input_error(trace + " lru-approx 8 -2 3", "usage:");
+    expect_input_error(trace + " lru-approx 8x 4 3", "usage:");
+    expect_input_error(trace + " lru-approx 8 4", "usage:");
+    expect_input_error(trace + " lru-approx 8", "usage:");
+    expect_input_error(trace + " lru-approx", "usage:");
+}
+
+void test_cli_accepts_history_bits_bounds() {
+    const std::string trace =
+        write_trace("silberschatz.trace", trace_lines_for_pages(kSilberschatzPages));
+
+    for (const std::string history_bits : {"1", "32"}) {
+        const RunResult result = run_sim(trace + " lru-approx " + history_bits + " 1 3");
+        assert(result.exit_code == 0);
+        assert(result.stdout_lines.size() == 2);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -287,6 +405,12 @@ int main() {
     test_opt_evicts_page_never_used_again();
     test_opt_never_worse_than_fifo();
     test_opt_is_deterministic();
+    test_lru_approx_spares_recently_used_page_on_history_tie();
+    test_lru_approx_full_tie_evicts_oldest_loaded_page();
+    test_lru_approx_ages_exactly_on_multiple_of_interval();
+    test_lru_approx_small_history_saturates_with_interval_one();
+    test_opt_never_worse_than_lru_approx();
+    test_lru_approx_is_deterministic();
     test_cli_fifo_silberschatz_three_frames();
     test_cli_opt_silberschatz_three_frames();
     test_cli_emits_one_line_per_frame_count();
@@ -301,6 +425,9 @@ int main() {
     test_cli_rejects_unknown_policy();
     test_cli_rejects_non_positive_frame_count();
     test_cli_rejects_missing_arguments();
+    test_cli_lru_approx_fills_history_bits_and_aging_interval();
+    test_cli_rejects_invalid_lru_approx_parameters();
+    test_cli_accepts_history_bits_bounds();
     std::cout << "all tests passed\n";
     return 0;
 }
