@@ -1,0 +1,5 @@
+# Scripts e dados lidos no WSL: sempre LF, mesmo com core.autocrlf=true.
+*.sh     text eol=lf
+*.conf   text eol=lf
+Makefile text eol=lf
+*.csv    text eol=lf
