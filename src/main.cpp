@@ -10,6 +10,7 @@
  * Uso: sim <trace> fifo|opt <frame_count>...
  *      sim <trace> lru-approx <history_bits> <aging_interval> <frame_count>...
  */
+#include <cctype>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -40,12 +41,17 @@ std::string trace_name(const std::string& path) {
     return name;
 }
 
-/// Converte um argumento em inteiro positivo.
+/// Converte um argumento em inteiro positivo, só com dígitos decimais.
 /// @throws std::invalid_argument se o argumento não for um inteiro positivo.
 uint64_t parse_positive(const std::string& arg) {
+    // O stoull pula espaços e aceita sinal (" -1" viraria ULLONG_MAX): exige um
+    // dígito logo no início.
+    if (arg.empty() || !std::isdigit(static_cast<unsigned char>(arg[0]))) {
+        throw std::invalid_argument("not a positive integer: " + arg);
+    }
     std::size_t consumed = 0;
     const unsigned long long value = std::stoull(arg, &consumed);
-    if (consumed != arg.size() || value == 0 || arg[0] == '-') {
+    if (consumed != arg.size() || value == 0) {
         throw std::invalid_argument("not a positive integer: " + arg);
     }
     return static_cast<uint64_t>(value);
