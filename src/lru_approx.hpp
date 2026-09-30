@@ -1,6 +1,6 @@
 /**
- * Política LRU aproximado (envelhecimento): a vítima é a página de menor histórico,
- * desempatando por bit de referência desligado e, depois, pela carregada há mais
+ * Política LRU aproximado (envelhecimento): a vítima é a página de bit de referência
+ * desligado, desempatando pelo menor histórico e, depois, pela carregada há mais
  * tempo.
  *
  * Responsabilidades:

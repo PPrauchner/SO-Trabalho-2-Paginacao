@@ -9,7 +9,7 @@ LIB_OBJS := $(LIB_SRCS:src/%.cpp=$(BUILD)/%.o)
 TEST_SRCS := $(wildcard tests/*.cpp)
 TEST_OBJS := $(TEST_SRCS:tests/%.cpp=$(BUILD)/tests/%.o)
 
-.PHONY: all test clean
+.PHONY: all test grid clean
 
 all: $(BUILD)/sim
 
@@ -32,6 +32,10 @@ $(BUILD):
 # O teste de ponta a ponta executa o binário, então ele precisa existir antes.
 test: $(BUILD)/sim $(BUILD)/test_sim
 	./$(BUILD)/test_sim
+
+# Grade de experimentos: valores em scripts/grid.conf, CSV em results/.
+grid: $(BUILD)/sim
+	bash scripts/run_grid.sh
 
 clean:
 	rm -rf $(BUILD)

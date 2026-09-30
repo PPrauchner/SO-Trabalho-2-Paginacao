@@ -66,8 +66,11 @@ Posição, no trace, do próximo acesso a uma página a partir do acesso atual.
 _Avoid_: distância futura
 
 **LRU aproximado** (`simulate_lru_approx`):
-Política de envelhecimento (aging): a vítima é a página de menor histórico,
-desempatando por bit de referência desligado e, depois, pela carregada há mais tempo.
+Política de envelhecimento (aging): a vítima é a página de bit de referência
+desligado, desempatando pelo menor histórico e, depois, pela carregada há mais tempo.
+O bit vem antes do histórico por ser a informação mais recente: com a ordem inversa,
+a página carregada desde o último envelhecimento (histórico zerado) seria sempre a
+próxima vítima, e o LRU aproximado ficaria pior que o FIFO.
 _Avoid_: LRU (é o exato, fora da comparação), aging, clock, segunda chance
 
 **Bit de referência** (`ref_bit`):

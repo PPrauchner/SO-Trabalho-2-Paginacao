@@ -22,15 +22,17 @@ struct Frame {
     uint64_t load_order;  ///< Posição da carga; menor = carregada há mais tempo.
 };
 
-/// Índice do frame vítima: menor histórico, depois bit de referência desligado,
-/// depois carregado há mais tempo.
+/// Índice do frame vítima: bit de referência desligado, depois menor histórico,
+/// depois carregado há mais tempo. O bit vem antes do histórico por ser a informação
+/// mais recente — senão a página carregada desde o último envelhecimento, de
+/// histórico zerado, seria sempre a próxima vítima.
 std::size_t choose_victim(const std::vector<Frame>& frames) {
     std::size_t victim = 0;
     for (std::size_t i = 1; i < frames.size(); ++i) {
         const Frame& a = frames[i];
         const Frame& b = frames[victim];
-        if (std::make_tuple(a.history, a.ref_bit, a.load_order) <
-            std::make_tuple(b.history, b.ref_bit, b.load_order)) {
+        if (std::make_tuple(a.ref_bit, a.history, a.load_order) <
+            std::make_tuple(b.ref_bit, b.history, b.load_order)) {
             victim = i;
         }
     }

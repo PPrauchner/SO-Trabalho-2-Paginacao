@@ -4,6 +4,8 @@
  * Responsabilidades:
  * - Executar o binário build/sim sobre traces escritos à mão e conferir o CSV.
  * - Chamar as políticas em processo, sem arquivo envolvido.
+ * - Executar a grade de experimentos (scripts/run_grid.sh) com uma configuração
+ *   própria e conferir os CSV gerados.
  *
  * Qualquer assert que falhar aborta o processo com código ≠ 0, o que faz o
  * `make test` falhar.
@@ -307,6 +309,17 @@ void test_lru_approx_full_tie_evicts_oldest_loaded_page() {
     assert(simulate_lru_approx(pages, 2, 8, 100) == 3);
 }
 
+void test_lru_approx_spares_page_loaded_since_last_aging() {
+    // 2 frames, N = 8, I = 2. O envelhecimento no acesso 2 dá às páginas 1 e 2 o
+    // mesmo histórico e desliga os bits; o acesso 3 expulsa a 1 (a mais antiga) e
+    // carrega a 3 com histórico zerado e bit ligado. No acesso 4 a vítima é a 2 (bit
+    // desligado), não a 3 — que foi usada neste intervalo, embora tenha histórico
+    // menor. O acesso 5 acerta a 3.
+    const std::vector<uint32_t> pages = {1, 2, 3, 4, 3};
+
+    assert(simulate_lru_approx(pages, 2, 8, 2) == 4);
+}
+
 void test_lru_approx_ages_exactly_on_multiple_of_interval() {
     // 2 frames, N = 2, sequência 1 2 1 3 2.
     // I = 2: o envelhecimento no acesso 2 desliga os bits; o acesso 3 religa o da
@@ -440,6 +453,90 @@ void test_cli_is_deterministic_on_large_trace() {
     }
 }
 
+/// Lê um arquivo inteiro, linha a linha.
+std::vector<std::string> read_lines(const std::string& path) {
+    std::vector<std::string> lines;
+    std::ifstream in(path);
+    std::string line;
+    while (std::getline(in, line)) {
+        lines.push_back(line);
+    }
+    return lines;
+}
+
+struct GridRun {
+    int exit_code;
+    std::string stderr_text;
+};
+
+/// Executa a grade de experimentos com uma configuração própria do teste.
+/// @param traces  Nomes dos traces da grade (sem `.trace`).
+/// @param present Traces que existem no diretório de traces do teste.
+/// @return Código de saída e a saída de erro da grade.
+GridRun run_grid(const std::vector<std::string>& traces,
+                 const std::vector<std::string>& present) {
+    const std::string dir = kScratchDir + "/grid";
+    const int setup_status =
+        std::system(("rm -rf " + dir + " && mkdir -p " + dir + "/traces").c_str());
+    assert(setup_status == 0);
+    for (const std::string& name : present) {
+        write_trace("grid/traces/" + name + ".trace",
+                    trace_lines_for_pages(kSilberschatzPages));
+    }
+    std::ofstream conf(dir + "/grid.conf");
+    conf << "TRACES=\"";
+    for (std::size_t i = 0; i < traces.size(); ++i) {
+        conf << (i == 0 ? "" : " ") << traces[i];
+    }
+    conf << "\"\nFRAMES=\"3 4\"\nLRU_PAIRS=\"8:1 2:4\"\n";
+    conf.close();
+
+    const std::string err_path = dir + "/stderr.txt";
+    const std::string command = "GRID_CONF=" + dir + "/grid.conf TRACES_DIR=" + dir +
+                                "/traces RESULTS_DIR=" + dir + "/results SIM=" +
+                                kSimBinary + " bash scripts/run_grid.sh > /dev/null 2> " +
+                                err_path;
+    const int status = std::system(command.c_str());
+    std::ifstream err(err_path);
+    std::ostringstream err_text;
+    err_text << err.rdbuf();
+    return {status, err_text.str()};
+}
+
+void test_grid_writes_one_csv_per_trace_with_every_simulation() {
+    const GridRun run = run_grid({"alpha"}, {"alpha"});
+
+    assert(run.exit_code == 0);
+    const std::vector<std::string> csv = read_lines(kScratchDir + "/grid/results/alpha.csv");
+    const std::vector<std::string> expected = {
+        kCsvHeader,
+        "alpha,fifo,3,,,20,15",
+        "alpha,fifo,4,,,20,10",
+        "alpha,opt,3,,,20,9",
+        "alpha,opt,4,,,20,8",
+    };
+    // Cabeçalho único, FIFO e OPT primeiro, depois um bloco por par N/I.
+    assert(csv.size() == expected.size() + 4);
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        assert(csv[i] == expected[i]);
+    }
+    assert(csv[5].rfind("alpha,lru-approx,3,8,1,20,", 0) == 0);
+    assert(csv[6].rfind("alpha,lru-approx,4,8,1,20,", 0) == 0);
+    assert(csv[7].rfind("alpha,lru-approx,3,2,4,20,", 0) == 0);
+    assert(csv[8].rfind("alpha,lru-approx,4,2,4,20,", 0) == 0);
+}
+
+void test_grid_warns_about_missing_trace_and_runs_the_others() {
+    const GridRun run = run_grid({"alpha", "ghost", "beta"}, {"alpha", "beta"});
+
+    assert(run.exit_code == 0);
+    assert(run.stderr_text.find("ghost.trace") != std::string::npos);
+    assert(read_lines(kScratchDir + "/grid/results/alpha.csv").size() == 9);
+    assert(read_lines(kScratchDir + "/grid/results/beta.csv").size() == 9);
+    std::ifstream ghost(kScratchDir + "/grid/results/ghost.csv");
+    assert(!ghost.good());
+}
+
 }  // namespace
 
 int main() {
@@ -449,6 +546,7 @@ int main() {
     test_opt_is_deterministic();
     test_lru_approx_spares_recently_used_page_on_history_tie();
     test_lru_approx_full_tie_evicts_oldest_loaded_page();
+    test_lru_approx_spares_page_loaded_since_last_aging();
     test_lru_approx_ages_exactly_on_multiple_of_interval();
     test_lru_approx_small_history_saturates_with_interval_one();
     test_opt_never_worse_than_lru_approx();
@@ -471,6 +569,8 @@ int main() {
     test_cli_rejects_invalid_lru_approx_parameters();
     test_cli_accepts_history_bits_bounds();
     test_cli_is_deterministic_on_large_trace();
+    test_grid_writes_one_csv_per_trace_with_every_simulation();
+    test_grid_warns_about_missing_trace_and_runs_the_others();
     std::cout << "all tests passed\n";
     return 0;
 }
