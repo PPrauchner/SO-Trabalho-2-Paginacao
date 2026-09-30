@@ -476,7 +476,9 @@ struct GridRun {
 GridRun run_grid(const std::vector<std::string>& traces,
                  const std::vector<std::string>& present) {
     const std::string dir = kScratchDir + "/grid";
-    std::system(("rm -rf " + dir + " && mkdir -p " + dir + "/traces").c_str());
+    const int setup_status =
+        std::system(("rm -rf " + dir + " && mkdir -p " + dir + "/traces").c_str());
+    assert(setup_status == 0);
     for (const std::string& name : present) {
         write_trace("grid/traces/" + name + ".trace",
                     trace_lines_for_pages(kSilberschatzPages));
