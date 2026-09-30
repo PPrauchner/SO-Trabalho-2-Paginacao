@@ -213,6 +213,9 @@ void test_cli_rejects_non_positive_frame_count() {
     expect_input_error(trace + " fifo -3", "usage:");
     expect_input_error(trace + " fifo 3 abc", "usage:");
     expect_input_error(trace + " fifo 3x", "usage:");
+    // O stoull pularia o espaço e converteria o -1 em ULLONG_MAX.
+    expect_input_error(trace + " fifo ' -1'", "usage:");
+    expect_input_error(trace + " fifo +5", "usage:");
 }
 
 void test_cli_rejects_missing_arguments() {
