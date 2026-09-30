@@ -401,6 +401,45 @@ void test_cli_accepts_history_bits_bounds() {
     }
 }
 
+/// Trace sintético grande, gerado por um LCG de semente fixa: endereços espalhados
+/// por algumas centenas de páginas, com deslocamento dentro da página e leituras e
+/// escritas misturadas.
+/// @param access_count Número de acessos do trace.
+/// @param page_span    Número de páginas distintas possíveis.
+/// @return Linhas do trace (`<endereço hex> <R|W>`).
+std::vector<std::string> synthetic_trace_lines(uint64_t access_count, uint32_t page_span) {
+    uint32_t state = 12345;
+    const auto next = [&state]() {
+        state = state * 1664525u + 1013904223u;  // Numerical Recipes
+        return state >> 8;  // descarta os bits baixos, de período curto
+    };
+    std::vector<std::string> lines;
+    lines.reserve(access_count);
+    for (uint64_t i = 0; i < access_count; ++i) {
+        const uint32_t page = next() % page_span;
+        const uint32_t offset = next() % 4096;
+        const bool write = next() % 2 == 1;
+        std::ostringstream line;
+        line << std::hex << ((page << 12) | offset) << (write ? " W" : " R");
+        lines.push_back(line.str());
+    }
+    return lines;
+}
+
+void test_cli_is_deterministic_on_large_trace() {
+    const std::string trace =
+        write_trace("synthetic.trace", synthetic_trace_lines(50000, 300));
+
+    for (const std::string policy_args : {"fifo", "opt", "lru-approx 8 100"}) {
+        const std::string args = trace + " " + policy_args + " 4 8 16 64 256";
+        const RunResult first = run_sim(args);
+        const RunResult second = run_sim(args);
+        assert(first.exit_code == 0 && second.exit_code == 0);
+        assert(first.stdout_lines.size() == 6);
+        assert(first.stdout_lines == second.stdout_lines);
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -431,6 +470,7 @@ int main() {
     test_cli_lru_approx_fills_history_bits_and_aging_interval();
     test_cli_rejects_invalid_lru_approx_parameters();
     test_cli_accepts_history_bits_bounds();
+    test_cli_is_deterministic_on_large_trace();
     std::cout << "all tests passed\n";
     return 0;
 }
