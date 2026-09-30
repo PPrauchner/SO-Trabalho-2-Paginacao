@@ -64,6 +64,30 @@ gcc,lru-approx,4,8,100,1000000,409047
 - `history_bits` (N) e `aging_interval` (I): só preenchidos no LRU aproximado.
 - `page_faults`: falhas de página, incluindo as compulsórias.
 
+## Gráficos do artigo
+
+Requer **Python 3.10+** e **matplotlib** (`python -m pip install matplotlib`). Roda
+tanto no Windows quanto no WSL — no Windows, use `python` em vez de `python3`:
+
+```bash
+python3 scripts/plot.py
+```
+
+Lê todos os CSV de `results/` e grava os gráficos em PDF (vetorial) em
+`article/figuras/`, três por trace:
+
+- `falhas_<trace>.pdf` — falhas de página × número de frames para FIFO, OPT e LRU
+  aproximado com o par N/I de referência.
+- `sensibilidade_n_<trace>.pdf` — LRU aproximado variando N, com I de referência.
+- `sensibilidade_i_<trace>.pdf` — LRU aproximado variando I, com N de referência.
+
+O par de referência (N=8, I=1000) fica no topo de [`scripts/plot.py`](scripts/plot.py);
+os demais valores de N e I vêm dos próprios CSV. O script só lê e plota — nenhuma
+simulação acontece em Python. Pastas diferentes podem ser passadas por argumento:
+`python3 scripts/plot.py <resultados> <saída>`.
+
+Testes do script: `python3 -m unittest discover -s scripts`.
+
 ## Simulação avulsa
 
 ```bash
