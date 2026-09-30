@@ -20,7 +20,7 @@ constexpr uint32_t kMaxHistoryBits = 32;
 
 /// Simula um trace sob LRU aproximado, com todos os frames começando vazios.
 /// @param pages          Páginas acessadas, em ordem.
-/// @param frame_count    Número de frames disponíveis.
+/// @param frame_count    Número de frames disponíveis; ao menos 1.
 /// @param history_bits   Bits de histórico (N), entre kMinHistoryBits e kMaxHistoryBits.
 /// @param aging_interval Intervalo de envelhecimento (I), em acessos; ao menos 1.
 /// @return Número de falhas de página, incluindo as compulsórias.

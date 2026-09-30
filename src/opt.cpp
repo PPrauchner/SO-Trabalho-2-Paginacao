@@ -7,6 +7,7 @@
  */
 #include "opt.hpp"
 
+#include <cassert>
 #include <iterator>
 #include <limits>
 #include <set>
@@ -36,6 +37,7 @@ std::vector<uint64_t> compute_next_use(const std::vector<uint32_t>& pages) {
 }  // namespace
 
 uint64_t simulate_opt(const std::vector<uint32_t>& pages, std::size_t frame_count) {
+    assert(frame_count >= 1);
     const std::vector<uint64_t> next_use = compute_next_use(pages);
 
     // Página residente → seu próximo uso; e o mesmo par ordenado por próximo uso.

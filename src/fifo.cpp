@@ -6,10 +6,12 @@
  */
 #include "fifo.hpp"
 
+#include <cassert>
 #include <queue>
 #include <unordered_set>
 
 uint64_t simulate_fifo(const std::vector<uint32_t>& pages, std::size_t frame_count) {
+    assert(frame_count >= 1);
     std::queue<uint32_t> load_order;
     std::unordered_set<uint32_t> resident;
     uint64_t page_faults = 0;

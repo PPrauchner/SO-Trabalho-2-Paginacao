@@ -8,6 +8,7 @@
  */
 #include "lru_approx.hpp"
 
+#include <cassert>
 #include <tuple>
 #include <unordered_map>
 
@@ -50,6 +51,7 @@ void age(std::vector<Frame>& frames, uint32_t history_bits) {
 
 uint64_t simulate_lru_approx(const std::vector<uint32_t>& pages, std::size_t frame_count,
                              uint32_t history_bits, uint64_t aging_interval) {
+    assert(frame_count >= 1);
     std::vector<Frame> frames;
     std::unordered_map<uint32_t, std::size_t> frame_of;  // página residente → frame
     uint64_t page_faults = 0;

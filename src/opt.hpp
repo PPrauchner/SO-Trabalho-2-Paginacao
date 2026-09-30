@@ -15,6 +15,6 @@
 
 /// Simula um trace sob OPT, com todos os frames começando vazios.
 /// @param pages       Páginas acessadas, em ordem.
-/// @param frame_count Número de frames disponíveis.
+/// @param frame_count Número de frames disponíveis; ao menos 1.
 /// @return Número de falhas de página, incluindo as compulsórias.
 uint64_t simulate_opt(const std::vector<uint32_t>& pages, std::size_t frame_count);
