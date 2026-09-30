@@ -309,6 +309,17 @@ void test_lru_approx_full_tie_evicts_oldest_loaded_page() {
     assert(simulate_lru_approx(pages, 2, 8, 100) == 3);
 }
 
+void test_lru_approx_spares_page_loaded_since_last_aging() {
+    // 2 frames, N = 8, I = 2. O envelhecimento no acesso 2 dá às páginas 1 e 2 o
+    // mesmo histórico e desliga os bits; o acesso 3 expulsa a 1 (a mais antiga) e
+    // carrega a 3 com histórico zerado e bit ligado. No acesso 4 a vítima é a 2 (bit
+    // desligado), não a 3 — que foi usada neste intervalo, embora tenha histórico
+    // menor. O acesso 5 acerta a 3.
+    const std::vector<uint32_t> pages = {1, 2, 3, 4, 3};
+
+    assert(simulate_lru_approx(pages, 2, 8, 2) == 4);
+}
+
 void test_lru_approx_ages_exactly_on_multiple_of_interval() {
     // 2 frames, N = 2, sequência 1 2 1 3 2.
     // I = 2: o envelhecimento no acesso 2 desliga os bits; o acesso 3 religa o da
@@ -533,6 +544,7 @@ int main() {
     test_opt_is_deterministic();
     test_lru_approx_spares_recently_used_page_on_history_tie();
     test_lru_approx_full_tie_evicts_oldest_loaded_page();
+    test_lru_approx_spares_page_loaded_since_last_aging();
     test_lru_approx_ages_exactly_on_multiple_of_interval();
     test_lru_approx_small_history_saturates_with_interval_one();
     test_opt_never_worse_than_lru_approx();
