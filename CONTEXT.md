@@ -40,20 +40,23 @@ _Avoid_: miss, page miss
 
 ### Políticas
 
-**Política de substituição** (`ReplacementPolicy`):
+**Política de substituição** (`simulate_<política>`):
 Regra que escolhe a vítima quando ocorre uma falha de página e todos os frames estão
-ocupados.
+ocupados. No código, cada política é uma função livre `simulate_<política>`; a
+interface comum entre elas é a assinatura compartilhada — páginas do trace e número
+de frames de entrada, número de falhas de página de retorno (o LRU aproximado recebe
+ainda N e I).
 _Avoid_: algoritmo de paginação, estratégia
 
 **Vítima** (`victim`):
 Página escolhida pela política para deixar seu frame e dar lugar à página que faltou.
 _Avoid_: página expulsa, página removida
 
-**FIFO** (`Fifo`):
+**FIFO** (`simulate_fifo`):
 Política cuja vítima é a página carregada há mais tempo, independentemente do uso.
 _Avoid_: fila
 
-**OPT** (`Opt`):
+**OPT** (`simulate_opt`):
 Política ótima (Belady) cuja vítima é a página cujo próximo uso está mais distante no
 futuro do trace — ou que nunca mais será usada. Serve de limite inferior.
 _Avoid_: ótimo, MIN, Belady
@@ -62,7 +65,7 @@ _Avoid_: ótimo, MIN, Belady
 Posição, no trace, do próximo acesso a uma página a partir do acesso atual.
 _Avoid_: distância futura
 
-**LRU aproximado** (`LruApprox`):
+**LRU aproximado** (`simulate_lru_approx`):
 Política de envelhecimento (aging): a vítima é a página de menor histórico,
 desempatando por bit de referência desligado e, depois, pela carregada há mais tempo.
 _Avoid_: LRU (é o exato, fora da comparação), aging, clock, segunda chance
