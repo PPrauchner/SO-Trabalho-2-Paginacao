@@ -29,8 +29,9 @@ Métrica: posição média do LRU aproximado entre o OPT (0) e o FIFO (1) nos fr
 
 ## Decisão
 
-- **I = 100 acessos.** É o melhor intervalo em todos os traces (I=200 empata, com
-  diferença de 0,002). Um intervalo curto demais (10) apaga a diferença entre páginas
+- **I = 100 acessos.** Com N=8, é o melhor intervalo na média entre os quatro traces
+  (I=200 empata, com diferença de 0,002). Com N=4, o I=200 fica um pouco à frente
+  (0,660 contra 0,671). Um intervalo curto demais (10) apaga a diferença entre páginas
   usadas há pouco e há muito tempo. Um intervalo longo demais (≥ 10000) deixa o bit de
   referência ligado em quase todas as páginas, e aí o LRU aproximado vira FIFO
   (posição 1,0) ou fica pior que ele (1,58 com I=100000).
