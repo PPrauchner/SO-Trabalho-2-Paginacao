@@ -469,12 +469,19 @@ struct GridRun {
     std::string stderr_text;
 };
 
+/// De onde e com quais caminhos a grade é chamada.
+enum class GridLaunch {
+    kFromRoot,          ///< Da raiz do repositório, caminhos por variável.
+    kDefaultsElsewhere, ///< De outro diretório, sem variável: só os padrões do script.
+    kRelativeElsewhere, ///< De outro diretório, caminhos relativos a ele por variável.
+};
+
 /// Configuração da grade montada por um teste.
 struct GridSetup {
     std::vector<std::string> traces;   ///< Traces da grade (sem `.trace`).
     std::vector<std::string> present;  ///< Traces que existem no diretório do teste.
     std::vector<std::string> broken = {};  ///< Presentes, mas com linha inválida.
-    bool from_other_dir = false;  ///< Executa fora da raiz do repositório.
+    GridLaunch launch = GridLaunch::kFromRoot;
     /// Conteúdo dos traces em `present`.
     std::vector<std::string> trace_lines = trace_lines_for_pages(kSilberschatzPages);
 };
@@ -500,16 +507,31 @@ GridRun run_grid(const GridSetup& setup) {
     conf.close();
 
     const std::string err_path = dir + "/stderr.txt";
-    // Fora da raiz, o simulador fica no padrão do script: é o caminho que ele
-    // precisa achar sozinho, sem depender do diretório atual.
-    const std::string command =
-        setup.from_other_dir
-            ? "root=\"$(pwd)\" && cd " + dir + " && GRID_CONF=\"$root/" + dir +
-                  "/grid.conf\" TRACES_DIR=\"$root/" + dir + "/traces\" RESULTS_DIR=\"$root/" +
-                  dir + "/results\" bash \"$root/scripts/run_grid.sh\" > /dev/null 2> stderr.txt"
-            : "GRID_CONF=" + dir + "/grid.conf TRACES_DIR=" + dir + "/traces RESULTS_DIR=" +
-                  dir + "/results SIM=" + kSimBinary +
-                  " bash scripts/run_grid.sh > /dev/null 2> " + err_path;
+    std::string command;
+    switch (setup.launch) {
+        case GridLaunch::kFromRoot:
+            command = "GRID_CONF=" + dir + "/grid.conf TRACES_DIR=" + dir +
+                      "/traces RESULTS_DIR=" + dir + "/results SIM=" + kSimBinary +
+                      " bash scripts/run_grid.sh > /dev/null 2> " + err_path;
+            break;
+        case GridLaunch::kDefaultsElsewhere:
+            // `dir` vira uma raiz falsa com o layout do repositório, e a grade roda
+            // de um subdiretório dela: os quatro caminhos saem dos padrões do script
+            // sem tocar no results/ de verdade.
+            command = "mkdir -p " + dir + "/scripts " + dir + "/build " + dir +
+                      "/elsewhere && cp scripts/run_grid.sh " + dir + "/scripts/ && mv " +
+                      dir + "/grid.conf " + dir + "/scripts/grid.conf && cp " + kSimBinary +
+                      " " + dir + "/build/sim && cd " + dir +
+                      "/elsewhere && bash ../scripts/run_grid.sh > /dev/null 2> ../stderr.txt";
+            break;
+        case GridLaunch::kRelativeElsewhere:
+            // O simulador fica no padrão; os demais caminhos são relativos ao
+            // diretório atual, não à raiz.
+            command = "root=\"$(pwd)\" && cd " + dir +
+                      " && GRID_CONF=grid.conf TRACES_DIR=traces RESULTS_DIR=results"
+                      " bash \"$root/scripts/run_grid.sh\" > /dev/null 2> stderr.txt";
+            break;
+    }
     const int status = std::system(command.c_str());
     std::ifstream err(err_path);
     std::ostringstream err_text;
@@ -558,16 +580,23 @@ void test_grid_failure_leaves_no_temporary_file_in_results() {
     const int no_tmp_status = std::system(
         ("test -z \"$(find " + kScratchDir + "/grid/results -name '*.tmp')\"").c_str());
     assert(no_tmp_status == 0);
+    // O trace anterior à falha fica completo, e o que falhou não deixa CSV.
+    assert(read_lines(kScratchDir + "/grid/results/alpha.csv").size() == 9);
+    std::ifstream broken(kScratchDir + "/grid/results/broken.csv");
+    assert(!broken.good());
 }
 
 void test_grid_runs_from_any_directory() {
-    const GridRun run = run_grid({{"alpha"}, {"alpha"}, {}, true});
+    for (const GridLaunch launch :
+         {GridLaunch::kDefaultsElsewhere, GridLaunch::kRelativeElsewhere}) {
+        const GridRun run = run_grid({{"alpha"}, {"alpha"}, {}, launch});
 
-    if (run.exit_code != 0) {
-        std::cerr << "stderr: " << run.stderr_text << '\n';
+        if (run.exit_code != 0) {
+            std::cerr << "stderr: " << run.stderr_text << '\n';
+        }
+        assert(run.exit_code == 0);
+        assert(read_lines(kScratchDir + "/grid/results/alpha.csv").size() == 9);
     }
-    assert(run.exit_code == 0);
-    assert(read_lines(kScratchDir + "/grid/results/alpha.csv").size() == 9);
 }
 
 void test_grid_is_deterministic() {
