@@ -29,9 +29,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_RESULTS_DIR = REPO_ROOT / "results"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "article" / "figuras"
 
-# Par N/I de referência do LRU aproximado — único lugar a editar.
+# Par N/I de referência do LRU aproximado — precisa constar do LRU_PAIRS de
+# scripts/grid.conf (escolha em docs/adr/0001-parametros-da-grade.md).
 REFERENCE_HISTORY_BITS = 8
-REFERENCE_AGING_INTERVAL = 1000
+REFERENCE_AGING_INTERVAL = 100
 
 POLICY_LABELS = {"fifo": "FIFO", "opt": "OPT"}
 

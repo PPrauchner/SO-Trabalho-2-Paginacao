@@ -41,9 +41,9 @@ class PolicyCurvesTest(unittest.TestCase):
             "gcc,fifo,8,,,100,50",
             "gcc,fifo,4,,,100,70",
             "gcc,opt,4,,,100,40",
-            "gcc,lru-approx,4,8,1000,100,60",
-            "gcc,lru-approx,4,8,100,100,99",
-            "gcc,lru-approx,4,4,1000,100,98",
+            "gcc,lru-approx,4,8,100,100,60",
+            "gcc,lru-approx,4,8,1000,100,99",
+            "gcc,lru-approx,4,4,100,100,98",
         ])
         rows = plot.load_results(self.dir)
 
@@ -51,7 +51,7 @@ class PolicyCurvesTest(unittest.TestCase):
 
         self.assertEqual(curves["FIFO"], ([4, 8], [70, 50]))
         self.assertEqual(curves["OPT"], ([4], [40]))
-        self.assertEqual(curves["LRU aproximado (N=8, I=1000)"], ([4], [60]))
+        self.assertEqual(curves["LRU aproximado (N=8, I=100)"], ([4], [60]))
         self.assertEqual(len(curves), 3)
 
 
@@ -62,13 +62,13 @@ class SensitivityCurvesTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         write_csv(Path(self.tmp.name), "gcc", [
             "gcc,fifo,4,,,100,70",
-            "gcc,lru-approx,4,8,1000,100,60",
-            "gcc,lru-approx,8,8,1000,100,30",
-            "gcc,lru-approx,4,8,100,100,65",
-            "gcc,lru-approx,4,4,1000,100,62",
-            "gcc,lru-approx,4,16,1000,100,59",
-            "gcc,lru-approx,4,4,100,100,99",
-            "sixpack,lru-approx,4,2,1000,100,1",
+            "gcc,lru-approx,4,8,100,100,60",
+            "gcc,lru-approx,8,8,100,100,30",
+            "gcc,lru-approx,4,8,1000,100,65",
+            "gcc,lru-approx,4,4,100,100,62",
+            "gcc,lru-approx,4,16,100,100,59",
+            "gcc,lru-approx,4,4,1000,100,99",
+            "sixpack,lru-approx,4,2,100,100,1",
         ])
         self.rows = plot.load_results(Path(self.tmp.name))
 
@@ -86,7 +86,7 @@ class SensitivityCurvesTest(unittest.TestCase):
         curves = plot.sensitivity_curves(self.rows, "gcc", vary="aging_interval")
 
         self.assertEqual(list(curves), ["I=100", "I=1000"])
-        self.assertEqual(curves["I=100"], ([4], [65]))
+        self.assertEqual(curves["I=1000"], ([4], [65]))
 
 
 class GenerateAllTest(unittest.TestCase):
@@ -98,9 +98,9 @@ class GenerateAllTest(unittest.TestCase):
                 write_csv(Path(results), trace, [
                     f"{trace},fifo,4,,,100,70",
                     f"{trace},opt,4,,,100,40",
-                    f"{trace},lru-approx,4,8,1000,100,60",
-                    f"{trace},lru-approx,4,4,1000,100,62",
-                    f"{trace},lru-approx,4,8,100,100,65",
+                    f"{trace},lru-approx,4,8,100,100,60",
+                    f"{trace},lru-approx,4,4,100,100,62",
+                    f"{trace},lru-approx,4,8,1000,100,65",
                 ])
             output = Path(out) / "figuras"
 
