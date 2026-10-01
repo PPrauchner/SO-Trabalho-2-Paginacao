@@ -8,21 +8,30 @@
 #   em todos os números de frames, num CSV com um único cabeçalho.
 # - Avisar sobre trace ausente e seguir com os demais.
 #
-# Uso: make grid   (ou: bash scripts/run_grid.sh, com build/sim já compilado)
+# Uso: make grid   (ou: bash scripts/run_grid.sh de qualquer diretório, com
+#                    build/sim já compilado)
 # Variáveis de ambiente (para os testes): GRID_CONF, TRACES_DIR, RESULTS_DIR, SIM.
+# Os padrões ficam na raiz do repositório; um caminho relativo passado por
+# variável vale a partir do diretório atual.
 
 set -euo pipefail
 
-GRID_CONF="${GRID_CONF:-scripts/grid.conf}"
-TRACES_DIR="${TRACES_DIR:-traces}"
-RESULTS_DIR="${RESULTS_DIR:-results}"
-SIM="${SIM:-./build/sim}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GRID_CONF="${GRID_CONF:-$ROOT/scripts/grid.conf}"
+TRACES_DIR="${TRACES_DIR:-$ROOT/traces}"
+RESULTS_DIR="${RESULTS_DIR:-$ROOT/results}"
+SIM="${SIM:-$ROOT/build/sim}"
 
 # shellcheck source=grid.conf
 source "$GRID_CONF"
 
 mkdir -p "$RESULTS_DIR"
 missing=0
+
+# Uma falha no meio de um trace aborta o script (set -e) antes do mv: o trap
+# apaga o temporário em vez de deixá-lo órfão em results/.
+tmp=""
+trap 'rm -f "$tmp"' EXIT
 
 for name in $TRACES; do
     trace="$TRACES_DIR/$name.trace"

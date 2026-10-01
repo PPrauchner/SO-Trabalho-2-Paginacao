@@ -20,3 +20,6 @@ __pycache__/
 *.synctex.gz
 *.fdb_latexmk
 *.fls
+
+# Temporário da grade (scripts/run_grid.sh) que sobra de uma execução abortada
+results/*.tmp

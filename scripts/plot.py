@@ -224,10 +224,17 @@ def generate_all(results_dir: Path, output_dir: Path) -> list[Path]:
         raise SystemExit(f"nenhum resultado em {results_dir} — rode `make grid` antes")
     output_dir.mkdir(parents=True, exist_ok=True)
     reference = f"N={REFERENCE_HISTORY_BITS}, I={REFERENCE_AGING_INTERVAL}"
+    reference_label = lru_label(REFERENCE_HISTORY_BITS, REFERENCE_AGING_INTERVAL)
     written: list[Path] = []
     for trace in sorted({r.trace for r in rows}):
+        faults = policy_curves(rows, trace)
+        if faults and reference_label not in faults:
+            # Divergência entre grid.conf e as constantes REFERENCE_*: o PDF sairia
+            # só com FIFO/OPT, sem ninguém notar.
+            print(f"aviso: {trace} sem o LRU aproximado de referência em falhas ({reference})",
+                  file=sys.stderr)
         figures = [
-            ("falhas", policy_curves(rows, trace), f"{trace}: falhas de página por política"),
+            ("falhas", faults, f"{trace}: falhas de página por política"),
             ("sensibilidade_n", sensitivity_curves(rows, trace, vary="history_bits"),
              f"{trace}: LRU aproximado variando N (I={REFERENCE_AGING_INTERVAL})"),
             ("sensibilidade_i", sensitivity_curves(rows, trace, vary="aging_interval"),
