@@ -6,6 +6,8 @@ Responsabilidades:
 - Verificar que o comando gera os PDF esperados na pasta de saída.
 """
 
+import contextlib
+import io
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +117,27 @@ class GenerateAllTest(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in output.iterdir()), expected)
             for path in written:
                 self.assertTrue(path.read_bytes().startswith(b"%PDF"))
+
+    def test_warns_when_the_reference_pair_is_missing_but_still_writes_the_faults_pdf(
+            self) -> None:
+        with tempfile.TemporaryDirectory() as results, tempfile.TemporaryDirectory() as out:
+            # Sem 8:100, mas com dados para os dois gráficos de sensibilidade.
+            write_csv(Path(results), "gcc", [
+                "gcc,fifo,4,,,100,70",
+                "gcc,opt,4,,,100,40",
+                "gcc,lru-approx,4,4,100,100,62",
+                "gcc,lru-approx,4,8,1000,100,65",
+            ])
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                written = plot.generate_all(Path(results), Path(out))
+
+            self.assertIn("aviso: gcc", stderr.getvalue())
+            self.assertIn("LRU aproximado", stderr.getvalue())
+            self.assertIn("N=8, I=100", stderr.getvalue())
+            self.assertIn(Path(out) / "falhas_gcc.pdf", written)
+            self.assertTrue((Path(out) / "falhas_gcc.pdf").exists())
 
     def test_fails_clearly_when_there_are_no_results(self) -> None:
         with tempfile.TemporaryDirectory() as results, tempfile.TemporaryDirectory() as out:
