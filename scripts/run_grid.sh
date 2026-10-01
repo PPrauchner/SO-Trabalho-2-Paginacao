@@ -24,6 +24,11 @@ source "$GRID_CONF"
 mkdir -p "$RESULTS_DIR"
 missing=0
 
+# Uma falha no meio de um trace aborta o script (set -e) antes do mv: o trap
+# apaga o temporário em vez de deixá-lo órfão em results/.
+tmp=""
+trap 'rm -f "$tmp"' EXIT
+
 for name in $TRACES; do
     trace="$TRACES_DIR/$name.trace"
     if [[ ! -f "$trace" ]]; then

@@ -472,9 +472,12 @@ struct GridRun {
 /// Executa a grade de experimentos com uma configuração própria do teste.
 /// @param traces  Nomes dos traces da grade (sem `.trace`).
 /// @param present Traces que existem no diretório de traces do teste.
+/// @param broken  Traces presentes com uma linha inválida, que fazem o simulador
+///                falhar.
 /// @return Código de saída e a saída de erro da grade.
 GridRun run_grid(const std::vector<std::string>& traces,
-                 const std::vector<std::string>& present) {
+                 const std::vector<std::string>& present,
+                 const std::vector<std::string>& broken = {}) {
     const std::string dir = kScratchDir + "/grid";
     const int setup_status =
         std::system(("rm -rf " + dir + " && mkdir -p " + dir + "/traces").c_str());
@@ -482,6 +485,9 @@ GridRun run_grid(const std::vector<std::string>& traces,
     for (const std::string& name : present) {
         write_trace("grid/traces/" + name + ".trace",
                     trace_lines_for_pages(kSilberschatzPages));
+    }
+    for (const std::string& name : broken) {
+        write_trace("grid/traces/" + name + ".trace", {"1000 R", "zzzz W"});
     }
     std::ofstream conf(dir + "/grid.conf");
     conf << "TRACES=\"";
@@ -537,6 +543,15 @@ void test_grid_warns_about_missing_trace_and_runs_the_others() {
     assert(!ghost.good());
 }
 
+void test_grid_failure_leaves_no_temporary_file_in_results() {
+    const GridRun run = run_grid({"alpha", "broken"}, {"alpha"}, {"broken"});
+
+    assert(run.exit_code != 0);
+    const int no_tmp_status = std::system(
+        ("test -z \"$(find " + kScratchDir + "/grid/results -name '*.tmp')\"").c_str());
+    assert(no_tmp_status == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -571,6 +586,7 @@ int main() {
     test_cli_is_deterministic_on_large_trace();
     test_grid_writes_one_csv_per_trace_with_every_simulation();
     test_grid_warns_about_missing_trace_and_runs_the_others();
+    test_grid_failure_leaves_no_temporary_file_in_results();
     std::cout << "all tests passed\n";
     return 0;
 }
